@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pro - Admin Control</title>
+    <style>
+        :root { --primary: #00d2ff; --admin: #a855f7; --danger: #ef4444; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #111; padding: 2rem; border-radius: 15px; box-shadow: 0 0 30px rgba(0,0,0,0.5); border: 1px solid #333; width: 100%; max-width: 500px; text-align: center; }
+        #game-section, #admin-panel { display: none; }
+        input { width: 100%; padding: 12px; margin: 8px 0; background: #1a1a1a; border: 1px solid #444; color: white; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--primary); border: none; color: #000; font-weight: bold; cursor: pointer; border-radius: 6px; margin-top: 10px; transition: 0.2s; }
+        button:hover { opacity: 0.8; }
+        .admin-btn { background: var(--admin); color: white; margin-top: 5px; font-size: 12px; }
+        .danger-btn { background: var(--danger); color: white; }
+        canvas { background: #000; border: 2px solid var(--primary); border-radius: 8px; margin: 10px 0; cursor: none; }
+        .status-bar { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--primary); font-weight: bold; }
+        .ranking-table { width: 100%; margin-top: 15px; border-collapse: collapse; font-size: 13px; }
+        .ranking-table th, .ranking-table td { padding: 8px; border-bottom: 1px solid #222; text-align: left; }
+        .admin-only { border: 1px dashed var(--admin); padding: 15px; margin-top: 20px; border-radius: 10px; background: #161020; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-section" class="card">
+        <h2 id="title">Acesso ao Sistema</h2>
+        <input type="text" id="user" placeholder="Usuário">
+        <input type="password" id="pass" placeholder="Senha">
+        <button onclick="handleAuth()">Entrar</button>
+        <p id="toggle-text" style="font-size: 12px; cursor: pointer; color: #888;" onclick="toggleMode()">Criar conta de usuário</p>
+        <p id="msg" style="color: var(--danger); font-size: 13px;"></p>
+    </div>
+
+    <div id="game-section" class="card">
+        <div class="status-bar">
+            <span>Jogador: <b id="player-name"></b></span>
+            <span>Pontos: <b id="score-display">0</b></span>
+        </div>
+        
+        <canvas id="gameCanvas" width="450" height="250"></canvas>
+        
+        <div id="admin-panel" class="admin-only">
+            <h4 style="color: var(--admin); margin: 0 0 10px 0;">🛠 Painel do Administrador (Pedro)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="admin-btn" onclick="toggleGodMode()" id="god-btn">Ativar Modo Deus</button>
+                <button class="admin-btn" onclick="resetRanking()">Limpar Ranking</button>
+                <button class="admin-btn" onclick="listUsers()">Gerenciar Usuários</button>
+                <button class="admin-btn danger-btn" onclick="location.reload()">Sair do Sistema</button>
+            </div>
+            <div id="user-list-display" style="font-size: 11px; margin-top: 10px; text-align: left; max-height: 80px; overflow-y: auto;"></div>
+        </div>
+
+        <div id="ranking">
+            <h3 style="margin: 15px 0 5px 0;">🏆 Top Rankings</h3>
+            <table class="ranking-table">
+                <thead><tr><th>Pos</th><th>Nome</th><th>Score</th></tr></thead>
+                <tbody id="ranking-body"></tbody>
+            </table>
+        </div>
+        <button id="logout-normal" onclick="location.reload()" style="margin-top:20px; display:block;">Sair</button>
+    </div>
+
+    <script>
+        const _v1 = "cGVkcm8="; 
+        const _v2 = "MTIzNDU="; 
+        let isRegister = false;
+        let currentUser = "";
+        let godMode = false;
+        let isAdmin = false;
+
+        if(!localStorage.getItem('db_users')) localStorage.setItem('db_users', JSON.stringify({}));
+        if(!localStorage.getItem('db_ranking')) localStorage.setItem('db_ranking', JSON.stringify([]));
+
+        function toggleMode() {
+            isRegister = !isRegister;
+            document.getElementById('title').innerText = isRegister ? "Novo Usuário" : "Acesso ao Sistema";
+            document.getElementById('toggle-text').innerText = isRegister ? "Já tem conta? Logar" : "Criar conta de usuário";
+        }
+
+        function handleAuth() {
+            const u = document.getElementById('user').value;
+            const p = document.getElementById('pass').value;
+            const db = JSON.parse(localStorage.getItem('db_users'));
+            const msg = document.getElementById('msg');
+
+            if(isRegister) {
+                if(btoa(u) === _v1 || db[u]) { msg.innerText = "Nome indisponível."; }
+                else {
+                    db[u] = btoa(p);
+                    localStorage.setItem('db_users', JSON.stringify(db));
+                    msg.style.color = "#00ff00"; msg.innerText = "Conta criada!";
+                    toggleMode();
+                }
+            } else {
+                if(btoa(u) === _v1 && btoa(p) === _v2) {
+                    currentUser = u; isAdmin = true; startGame();
+                } else if(db[u] && db[u] === btoa(p)) {
+                    currentUser = u; isAdmin = false; startGame();
+                } else { msg.innerText = "Usuário ou senha inválidos."; }
+            }
+        }
+
+        // --- FUNÇÕES DE ADMIN ---
+        function toggleGodMode() {
+            godMode = !godMode;
+            const btn = document.getElementById('god-btn');
+            btn.innerText = godMode ? "Modo Deus: ON" : "Ativar Modo Deus";
+            btn.style.background = godMode ? "#22c55e" : "var(--admin)";
+        }
+
+        function resetRanking() {
+            if(confirm("Deseja apagar todo o ranking?")) {
+                localStorage.setItem('db_ranking', JSON.stringify([]));
+                displayRanking();
+            }
+        }
+
+        function listUsers() {
+            const db = JSON.parse(localStorage.getItem('db_users'));
+            const display = document.getElementById('user-list-display');
+            let html = "<b>Usuários cadastrados:</b><br>";
+            for(let u in db) {
+                html += `- ${u} <span style="color:red; cursor:pointer" onclick="deleteUser('${u}')">[X]</span><br>`;
+            }
+            display.innerHTML = html;
+        }
+
+        function deleteUser(user) {
+            let db = JSON.parse(localStorage.getItem('db_users'));
+            delete db[user];
+            localStorage.setItem('db_users', JSON.stringify(db));
+            listUsers();
+        }
+
+        // --- LÓGICA DO JOGO ---
+        function startGame() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('game-section').style.display = 'block';
+            document.getElementById('player-name').innerText = currentUser;
+            
+            if(isAdmin) {
+                document.getElementById('admin-panel').style.display = 'block';
+                document.getElementById('logout-normal').style.display = 'none';
+            }
+            displayRanking();
+            runGame();
+        }
+
+        function displayRanking() {
+            const list = JSON.parse(localStorage.getItem('db_ranking'));
+            document.getElementById('ranking-body').innerHTML = list.map((it, idx) => `
+                <tr><td>${idx+1}º</td><td>${it.name}</td><td>${it.score}</td></tr>
+            `).join('');
+        }
+
+        function runGame() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            let score = 0, active = true;
+            let p = { x: 225, y: 125, r: 10 };
+            let coin = { x: 50, y: 50 };
+            let obs = [];
+
+            canvas.onmousemove = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                p.x = e.clientX - rect.left; p.y = e.clientY - rect.top;
+            };
+
+            function loop() {
+                if(!active) return;
+                ctx.clearRect(0,0,450,250);
+
+                // Moeda
+                ctx.fillStyle = "#ffd700";
+                ctx.shadowBlur = 10; ctx.shadowColor = "gold";
+                ctx.beginPath(); ctx.arc(coin.x, coin.y, 7, 0, 7); ctx.fill();
+                ctx.shadowBlur = 0;
+
+                if(Math.hypot(p.x-coin.x, p.y-coin.y) < 18) {
+                    score++;
+                    document.getElementById('score-display').innerText = score;
+                    coin.x = 20 + Math.random()*410; coin.y = 20 + Math.random()*210;
+                    obs.push({x: Math.random()*450, y: 0, s: 1 + Math.random()*3});
+                }
+
+                // Obstáculos
+                ctx.fillStyle = "#ff4444";
+                obs.forEach(o => {
+                    o.y += o.s; if(o.y > 250) o.y = 0;
+                    ctx.fillRect(o.x, o.y, 10, 10);
+                    if(!godMode && Math.hypot(p.x-o.x, p.y-o.y) < 15) {
+                        active = false;
+                        alert("Fim de Jogo! Pontos: " + score);
+                        saveScore(score);
+                    }
+                });
+
+                // Player
+                ctx.fillStyle = godMode ? "#22c55e" : varProp('--primary');
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+
+                requestAnimationFrame(loop);
+            }
+            function varProp(name) { return getComputedStyle(document.documentElement).getPropertyValue(name); }
+            loop();
+        }
+
+        function saveScore(s) {
+            let r = JSON.parse(localStorage.getItem('db_ranking'));
+            r.push({name: currentUser, score: s});
+            r.sort((a, b) => b.score - a.score);
+            localStorage.setItem('db_ranking', JSON.stringify(r.slice(0, 5)));
+            displayRanking();
+        }
+    </script>
+</body>
+</html>
